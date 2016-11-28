@@ -6,6 +6,192 @@ let
 
   cfg = config.services.corosync;
 
+  interfaceOptions = {
+    options = {
+      ringnumber = mkOption {
+        type = types.int;
+        default = 0;
+        description = ''
+          Specify the ring number for the interface.
+        '';
+      };
+      bindnetaddr = mkOption {
+        type = types.str;
+        description = ''
+          Specify the network address the corosync executive should bind to.
+        '';
+      };
+      broadcast = mkOption {
+        type = types.nullOr types.bool;
+        default = null;
+        description = ''
+          Whether to use the broadcast address for communication.
+        '';
+      };
+      mcastaddr = mkOption {
+        type = types.str;
+        description = ''
+          Specify the multicast address used by the corosync executive.
+        '';
+      };
+      mcastport = mkOption {
+        type = types.int;
+        description = ''
+          Specify the UDP port number.
+        '';
+      };
+      ttl = mkOption {
+        type = types.nullOr types.int;
+        default = null;
+        description = ''
+          Specify the Time To Live (TTL).
+        '';
+      };
+    };
+  };
+
+  logPriority = [ "alert" "crit" "debug" "emerg" "err" "info" "notice" "warning" ];
+
+  loggingCommonOptions = {
+    toStderr = mkOption {
+      type = types.bool;
+      default = true;
+      description = ''
+        Whether to log on stderr.
+      '';
+    };
+    toLogfile = mkOption {
+      type = types.bool;
+      default = false;
+      description = ''
+        Whether to log on a file.
+      '';
+    };
+    toSyslog = mkOption {
+      type = types.bool;
+      default = true;
+      description = ''
+        Whether to send logs to the syslog daemon.
+      '';
+    };
+    logfile = mkOption {
+      type = types.nullOr types.path;
+      default = null;
+      description = ''
+        Specify the path of the logfile.
+      '';
+    };
+    logfilePriority = mkOption {
+      type = types.enum logPriority;
+      default = "info";
+      description = ''
+        Specify the logfile priority.
+      '';
+    };
+    syslogFacility = mkOption {
+      type = types.enum ([ "daemon" ] ++ map (i: "local${toString i}") (range 0 7));
+      default = "daemon";
+      description = ''
+        Specify the syslog facility.
+      '';
+    };
+    syslogPriority = mkOption {
+      type = types.enum logPriority;
+      default = "info";
+      description = ''
+        Specify the syslog priority.
+      '';
+    };
+    debug = mkOption {
+      type = types.bool;
+      default = false;
+      description = ''
+        Whether to log output messages.
+      '';
+    };
+  };
+
+  loggerSubsysOptions = {
+    options = loggingCommonOptions // {
+      subsys = mkOption {
+        type = types.str;
+        description = ''
+          Specify the subsystem whose logging configuration will be modified.
+        '';
+      };
+    };
+  };
+
+  nodeOptions = {
+    options = {
+      ringNumber = mkOption {
+        type = types.int;
+        description = ''
+          Specify the ring number.
+        '';
+      };
+      ipAddr = mkOption {
+        type = types.str;
+        description = ''
+          Specify the IP address of the node.
+        '';
+      };
+      nodeid = mkOption {
+        type = types.nullOr types.int;
+        default = null;
+        description = ''
+          Specify the ring number.
+        '';
+      };
+    };
+  };
+
+  boolToYesOrNo = b: if b then "yes" else "no";
+
+  indent = str: concatStrings (concatMap (s: ["  " s "\n"]) (splitString "\n" str));
+
+  interfaceToString = def: ''
+    interface {
+      ringnumber: ${toString def.ringnumber}
+      bindnetaddr: ${def.bindnetaddr}
+      ${optionalString (def.broadcast != null) "broadcast: ${def.broadcast}"}
+      mcastaddr: ${def.mcastaddr}
+      mcastport: ${toString def.mcastport}
+      ${optionalString (def.ttl != null) "ttl: ${toString def.ttl}"}
+    }
+  '';
+
+  loggerSubsysToString = def: ''
+    logger_subsys {
+      subsys: ${def.subsys}
+      to_stderr: ${boolToYesOrNo def.toStderr} 
+      to_logfile: ${boolToYesOrNo def.toLogfile} 
+      to_syslog: ${boolToYesOrNo def.toSyslog} 
+  '' + optionalString (def.logfile != null) "  logfile: ${def.logfile}" + ''
+      logfile_priority: ${def.logfilePriority}
+      syslog_priority: ${def.syslogPriority}
+      syslog_facility: ${def.syslogFacility}
+      debug: ${boolToYesOrNo def.debug}
+    }
+  '';
+
+  loggingToString = def: ''
+    logging {
+      timestamp: ${boolToYesOrNo def.timestamp}
+      fileline: ${boolToYesOrNo def.fileline}
+      function_name: ${boolToYesOrNo def.functionName}
+      to_stderr: ${boolToYesOrNo def.toStderr} 
+      to_logfile: ${boolToYesOrNo def.toLogfile} 
+      to_syslog: ${boolToYesOrNo def.toSyslog} 
+  '' + optionalString (def.logfile != null) "  logfile: ${def.logfile}" + ''
+      logfile_priority: ${def.logfilePriority}
+      syslog_facility: ${def.syslogFacility}
+      syslog_priority: ${def.syslogPriority}
+      debug: ${boolToYesOrNo def.debug}
+      ${concatMapStringsSep "\n" loggerSubsysToString def.loggerSubsys}
+    }
+  '';
+
 in
 
 {
@@ -22,10 +208,18 @@ in
         '';
       };
 
+      conf = mkOption {
+        type = types.str;
+        default = "";
+        description = ''
+          Specify the content of the configuration file.
+        '';
+      };
+
       totem = {
 
         version = mkOption {
-          type = types.integer;
+          type = types.int;
           default = 2;
           description = ''
             Specify the version of the configuration file."
@@ -65,7 +259,7 @@ in
         };
 
         netmtu = mkOption {
-          type = types.integer;
+          type = types.int;
           default = 1500;
           description = ''
             Specify the network MTU."
@@ -89,7 +283,7 @@ in
         };
 
         configVersion = mkOption {
-          type = types.integer;
+          type = types.int;
           default = 0;
           description = ''
             Specify the version of the configuration file."
@@ -105,20 +299,75 @@ in
         };
 
         token = mkOption {
-          type = types.integer;
-          default = "1000";
+          type = types.int;
+          default = 1000;
           description = ''
             Specify the timeout in ms until token loss is declared after not receiving a token.
           '';
         };
 
+        interfaces = mkOption {
+          type = types.listOf (types.submodule interfaceOptions);
+          default = [];
+          description = ''
+            List of interface sub-directives.
+          '';
+        };
+
+      };
+
+      logging = loggingCommonOptions // {
+
+        timestamp = mkOption {
+          type = types.bool;
+          default = false;
+          description = ''
+            Whether to timestamp every log messages.
+          '';
+        };
+
+        fileline = mkOption {
+          type = types.bool;
+          default = false;
+          description = ''
+            Whether to log file and line.
+          '';
+        };
+
+        functionName = mkOption {
+          type = types.bool;
+          default = false;
+          description = ''
+            Whether to log function name.
+          '';
+        };
+
+        loggerSubsys = mkOption {
+          type = types.listOf (types.submodule loggerSubsysOptions);
+          default = [];
+          description = ''
+            Specify log configuration for specific subsystems.
+          '';
+        };
+
+      };
+
+      nodelist = mkOption {
+        type = types.listOf (types.submodule nodeOptions);
+        default = [];
+        description = ''
+          Specify specific informations about nodes in the cluster.
+        '';
       };
 
     };
 
   };
 
-  config = {
+  config = mkIf cfg.enable {
+
+    services.corosync.conf = builtins.toFile "corosync.conf" (loggingToString cfg.logging);
+
   };
 
 }

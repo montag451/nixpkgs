@@ -106,7 +106,7 @@ let
       type = types.bool;
       default = false;
       description = ''
-        Whether to log output messages.
+        Whether to log debug messages.
       '';
     };
   };
@@ -140,13 +140,21 @@ let
         type = types.nullOr types.int;
         default = null;
         description = ''
-          Specify the ring number.
+          Specify the node ID.
+        '';
+      };
+      quorumVotes = mkOption {
+        type = types.nullOr types.int;
+        default = null;
+        description = ''
+          Specify the number of votes for this node.
         '';
       };
     };
   };
 
   boolToYesOrNo = b: if b then "yes" else "no";
+  boolToOneOrZero = b: if b then "1" else "0";
 
   indent = s: if s == "" then "" else "  " + concatStringsSep "\n  " (splitString "\n" s);
 
@@ -167,17 +175,21 @@ let
     }
   '';
 
+  loggingCommonToString = def: ''
+    to_stderr: ${boolToYesOrNo def.toStderr} 
+    to_logfile: ${boolToYesOrNo def.toLogfile} 
+    to_syslog: ${boolToYesOrNo def.toSyslog} 
+  '' + optionalString (def.logfile != null) "logfile: ${def.logfile}\n" + ''
+    logfile_priority: ${def.logfilePriority}
+    syslog_facility: ${def.syslogFacility}
+    syslog_priority: ${def.syslogPriority}
+    debug: ${boolToYesOrNo def.debug}
+  '';
+
   loggerSubsysToString = def: ''
     logger_subsys {
       subsys: ${def.subsys}
-      to_stderr: ${boolToYesOrNo def.toStderr} 
-      to_logfile: ${boolToYesOrNo def.toLogfile} 
-      to_syslog: ${boolToYesOrNo def.toSyslog} 
-  '' + optionalString (def.logfile != null) "  logfile: ${def.logfile}\n" + ''
-      logfile_priority: ${def.logfilePriority}
-      syslog_priority: ${def.syslogPriority}
-      syslog_facility: ${def.syslogFacility}
-      debug: ${boolToYesOrNo def.debug}
+  '' + indent (loggingCommonToString def) + ''
     }
   '';
 
@@ -186,19 +198,52 @@ let
       timestamp: ${boolToYesOrNo def.timestamp}
       fileline: ${boolToYesOrNo def.fileline}
       function_name: ${boolToYesOrNo def.functionName}
-      to_stderr: ${boolToYesOrNo def.toStderr} 
-      to_logfile: ${boolToYesOrNo def.toLogfile} 
-      to_syslog: ${boolToYesOrNo def.toSyslog} 
-  '' + optionalString (def.logfile != null) "  logfile: ${def.logfile}\n" + indent ''
-      logfile_priority: ${def.logfilePriority}
-      syslog_facility: ${def.syslogFacility}
-      syslog_priority: ${def.syslogPriority}
-      debug: ${boolToYesOrNo def.debug}
-  '' + indent (concatMapStrings loggerSubsysToString def.loggerSubsys) + ''
+  '' + indent (loggingCommonToString def)
+     + indent (concatMapStrings loggerSubsysToString def.loggerSubsys) + ''
     }
   '';
 
-  confToString = def: totemToString def.totem + loggingToString def.logging;
+  nodeToString = def: ''
+    node {
+      ring${toString def.ringNumber}_addr: ${def.ipAddr}
+  '' + optionalString (def.nodeid != null) "  nodeid: ${toString def.nodeid}\n"
+     + optionalString (def.quorumVotes != null) "  quorum_votes: ${toString def.quorumVotes}\n" + ''
+    }
+  '';
+
+  nodeListToString = def: ''
+    nodelist {
+  '' + indent (concatMapStrings nodeToString def) + ''
+    }
+  '';
+
+  quorumToString = def: ''
+    quorum {
+    '' + optionalString (def.provider != null) (indent ''
+      provider: ${def.provider}
+      '' + optionalString (def.expectedVotes != null) "  expected_votes: ${toString def.expectedVotes}\n" + indent ''
+      two_node: ${boolToOneOrZero def.twoNode}
+      wait_for_all: ${boolToOneOrZero def.waitForAll}
+      last_man_standing: ${boolToOneOrZero def.lastManStanding}
+      last_man_standing_window: ${toString def.lastManStandingWindow}
+      auto_tie_breaker: ${boolToOneOrZero def.autoTieBreaker}
+      auto_tie_breaker_node: ${
+        if isList def.autoTieBreakerNode
+        then concatMapStringsSep " " toString def.autoTieBreakerNode
+        else toString def.autoTieBreakerNode
+      }
+      allow_downscale: ${boolToOneOrZero def.allowDownscale}
+      expected_votes_tracking: ${boolToOneOrZero def.expectedVotesTracking}
+    '') + ''
+    }
+  '';
+
+  confToString = def: concatStringsSep "\n" [
+    (totemToString def.totem)
+    (nodeListToString def.nodelist)
+    (quorumToString def.quorum)
+    (loggingToString def.logging)
+  ];
 
 in
 
@@ -302,7 +347,7 @@ in
           type = types.enum [ "ipv4" "ipv6" ];
           default = "ipv4";
           description = ''
-            Specify the version of the IP protocol to used."
+            Specify the version of the IP protocol to use."
           '';
         };
 
@@ -318,7 +363,7 @@ in
           type = types.listOf (types.submodule interfaceOptions);
           default = [];
           description = ''
-            List of interface sub-directives.
+            List of interfaces.
           '';
         };
 
@@ -368,13 +413,97 @@ in
         '';
       };
 
+      quorum = {
+
+        provider = mkOption {
+          type = types.nullOr (types.enum [ "corosync_votequorum" ]);
+          default = null;
+          description = ''
+            Specify the quorum algorithm to use.
+          '';
+        };
+
+        expectedVotes = mkOption {
+          type = types.nullOr types.int;
+          default = null;
+          description = ''
+            Specify the number of expected votes in the cluster.
+          '';
+        };
+
+        twoNode = mkOption {
+          type = types.bool;
+          default = false;
+          description = ''
+            Enable two node cluster operations.
+          '';
+        };
+
+        waitForAll = mkOption {
+          type = types.bool;
+          default = false;
+          description = ''
+            Enable Wait For All (WFA) feature.
+          '';
+        };
+
+        lastManStanding = mkOption {
+          type = types.bool;
+          default = false;
+          description = ''
+            Enable Last Man Standing (LMS) feature.
+          '';
+        };
+
+        lastManStandingWindow = mkOption {
+          type = types.int;
+          default = 10000;
+          description = ''
+            Sepcify Last Man Standing (LMS) window in ms.
+          '';
+        };
+
+        autoTieBreaker = mkOption {
+          type = types.bool;
+          default = false;
+          description = ''
+            Enable Auto Tie Breaker (ATB) feature.
+          '';
+        };
+
+        autoTieBreakerNode = mkOption {
+          type = with types; either (enum [ "lowest" "highest" ]) (listOf int);
+          default = "lowest";
+          description = ''
+            Enable Auto Tie Breaker (ATB) feature.
+          '';
+        };
+
+        allowDownscale = mkOption {
+          type = types.bool;
+          default = false;
+          description = ''
+            Enable Allow Downscale (AD) feature.
+          '';
+        };
+
+        expectedVotesTracking = mkOption {
+          type = types.bool;
+          default = false;
+          description = ''
+            Enable Expected Votes Tracking (EVT) feature.
+          '';
+        };
+
+      };
+
     };
 
   };
 
   config = mkIf cfg.enable {
 
-    environment.etc."corosync/corosync.conf".text = confToString cfg;
+    services.corosync.conf = builtins.toFile "corosync.conf" (confToString cfg);
 
   };
 

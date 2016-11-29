@@ -148,16 +148,22 @@ let
 
   boolToYesOrNo = b: if b then "yes" else "no";
 
-  indent = str: concatStrings (concatMap (s: ["  " s "\n"]) (splitString "\n" str));
+  indent = s: if s == "" then "" else "  " + concatStringsSep "\n  " (splitString "\n" s);
 
   interfaceToString = def: ''
     interface {
       ringnumber: ${toString def.ringnumber}
       bindnetaddr: ${def.bindnetaddr}
-      ${optionalString (def.broadcast != null) "broadcast: ${def.broadcast}"}
+      ${optionalString (def.broadcast != null) "  broadcast: ${def.broadcast}\n"}
       mcastaddr: ${def.mcastaddr}
       mcastport: ${toString def.mcastport}
-      ${optionalString (def.ttl != null) "ttl: ${toString def.ttl}"}
+  '' + optionalString (def.ttl != null) "  ttl: ${toString def.ttl}\n" + ''
+    }
+  '';
+
+  totemToString = def: ''
+    totem {
+  '' + indent (concatMapStrings interfaceToString def.interfaces) + ''
     }
   '';
 
@@ -167,7 +173,7 @@ let
       to_stderr: ${boolToYesOrNo def.toStderr} 
       to_logfile: ${boolToYesOrNo def.toLogfile} 
       to_syslog: ${boolToYesOrNo def.toSyslog} 
-  '' + optionalString (def.logfile != null) "  logfile: ${def.logfile}" + ''
+  '' + optionalString (def.logfile != null) "  logfile: ${def.logfile}\n" + ''
       logfile_priority: ${def.logfilePriority}
       syslog_priority: ${def.syslogPriority}
       syslog_facility: ${def.syslogFacility}
@@ -183,14 +189,16 @@ let
       to_stderr: ${boolToYesOrNo def.toStderr} 
       to_logfile: ${boolToYesOrNo def.toLogfile} 
       to_syslog: ${boolToYesOrNo def.toSyslog} 
-  '' + optionalString (def.logfile != null) "  logfile: ${def.logfile}" + ''
+  '' + optionalString (def.logfile != null) "  logfile: ${def.logfile}\n" + indent ''
       logfile_priority: ${def.logfilePriority}
       syslog_facility: ${def.syslogFacility}
       syslog_priority: ${def.syslogPriority}
       debug: ${boolToYesOrNo def.debug}
-      ${concatMapStringsSep "\n" loggerSubsysToString def.loggerSubsys}
+  '' + indent (concatMapStrings loggerSubsysToString def.loggerSubsys) + ''
     }
   '';
+
+  confToString = def: totemToString def.totem + loggingToString def.logging;
 
 in
 
@@ -366,7 +374,7 @@ in
 
   config = mkIf cfg.enable {
 
-    services.corosync.conf = builtins.toFile "corosync.conf" (loggingToString cfg.logging);
+    environment.etc."corosync/corosync.conf".text = confToString cfg;
 
   };
 

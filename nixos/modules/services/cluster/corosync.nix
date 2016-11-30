@@ -4,6 +4,8 @@ with lib;
 
 let
 
+  newPkgs = import ../../../.. {};
+
   cfg = config.services.corosync;
 
   interfaceOptions = {
@@ -155,6 +157,7 @@ let
 
   boolToYesOrNo = b: if b then "yes" else "no";
   boolToOneOrZero = b: if b then "1" else "0";
+  boolToOnOrOff = b: if b then "on" else "off";
 
   indent = s: if s == "" then "" else "  " + concatStringsSep "\n  " (splitString "\n" s);
 
@@ -176,14 +179,14 @@ let
   '';
 
   loggingCommonToString = def: ''
-    to_stderr: ${boolToYesOrNo def.toStderr} 
-    to_logfile: ${boolToYesOrNo def.toLogfile} 
-    to_syslog: ${boolToYesOrNo def.toSyslog} 
+    to_stderr: ${boolToYesOrNo def.toStderr}
+    to_logfile: ${boolToYesOrNo def.toLogfile}
+    to_syslog: ${boolToYesOrNo def.toSyslog}
   '' + optionalString (def.logfile != null) "logfile: ${def.logfile}\n" + ''
     logfile_priority: ${def.logfilePriority}
     syslog_facility: ${def.syslogFacility}
     syslog_priority: ${def.syslogPriority}
-    debug: ${boolToYesOrNo def.debug}
+    debug: ${boolToOnOrOff def.debug}
   '';
 
   loggerSubsysToString = def: ''
@@ -195,9 +198,9 @@ let
 
   loggingToString = def: ''
     logging {
-      timestamp: ${boolToYesOrNo def.timestamp}
-      fileline: ${boolToYesOrNo def.fileline}
-      function_name: ${boolToYesOrNo def.functionName}
+      timestamp: ${boolToOnOrOff def.timestamp}
+      fileline: ${boolToOnOrOff def.fileline}
+      function_name: ${boolToOnOrOff def.functionName}
   '' + indent (loggingCommonToString def)
      + indent (concatMapStrings loggerSubsysToString def.loggerSubsys) + ''
     }
@@ -503,7 +506,25 @@ in
 
   config = mkIf cfg.enable {
 
-    services.corosync.conf = builtins.toFile "corosync.conf" (confToString cfg);
+    systemd.services.corosync = {
+      description = "Corosync daemon";
+      after = [ "network.target" ];
+      wantedBy = [ "multi-user.target" ];
+
+      serviceConfig = {
+        ExecStart = "${newPkgs.corosync}/bin/corosync -f";
+      };
+
+      preStart = ''
+        mkdir -m 0700 -p /var/lib/corosync
+      '';
+    };
+
+    environment.etc."corosync/corosync.conf".text = confToString cfg;
+
+    environment.systemPackages = [ newPkgs.corosync ];
+
+    services.dbus.packages = [ newPkgs.corosync ];
 
   };
 

@@ -1,6 +1,7 @@
-{ stdenv, fetchurl, coreutils, pam, groff
+{ stdenv, fetchurl, coreutils, pam, groff, openldap
 , sendmailPath ? "/var/setuid-wrappers/sendmail"
 , withInsults ? false
+, withLdap ? false
 }:
 
 stdenv.mkDerivation rec {
@@ -25,6 +26,8 @@ stdenv.mkDerivation rec {
   ] ++ stdenv.lib.optional withInsults [
     "--with-insults"
     "--with-all-insults"
+  ] ++ stdenv.lib.optional withLdap [
+    "--with-ldap"
   ];
 
   configureFlagsArray = [
@@ -41,7 +44,7 @@ stdenv.mkDerivation rec {
     installFlags="sudoers_uid=$(id -u) sudoers_gid=$(id -g) sysconfdir=$out/etc rundir=$TMPDIR/dummy vardir=$TMPDIR/dummy"
     '';
 
-  buildInputs = [ coreutils pam groff ];
+  buildInputs = [ coreutils pam groff ] ++ stdenv.lib.optional withLdap openldap;
 
   enableParallelBuilding = true;
 

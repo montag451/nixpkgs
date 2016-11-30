@@ -9,6 +9,7 @@ let
   inherit (config.services.avahi) nssmdns;
   inherit (config.services.samba) nsswins;
   ldap = (config.users.ldap.enable && config.users.ldap.nsswitch);
+  sudoLdap = (config.security.sudo.enable && config.security.sudo.ldap.enable);
 
 in
 
@@ -49,6 +50,7 @@ in
         ethers:    files
         services:  files
         protocols: files
+        ${optionalString sudoLdap "sudoers:   ldap"}
       '';
 
     # Systemd provides nss-myhostname to ensure that our hostname

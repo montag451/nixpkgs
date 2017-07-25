@@ -17482,18 +17482,20 @@ in {
 
   swiftclient = buildPythonPackage rec {
     name = "swiftclient-${version}";
-    version = "2.6.0";
+    version = "3.3.0";
+
+    disabled = !(isPy27 || pythonAtLeast "3.2");
 
     src = pkgs.fetchurl {
       url = "mirror://pypi/p/python-swiftclient/python-swiftclient-${version}.tar.gz";
-      sha256 = "1j33l4z9vqh0scfncl4fxg01zr1hgqxhhai6gvcih1gccqm4nd7p";
+      sha256 = "0zdzs36397yb56zwdddyl860ardjz55r5yrr9fcg8bpb7kbkhkcb";
     };
 
     propagatedBuildInputs = with self; [
-      pbr requests2 futures six
-    ];
+      pbr requests2 six
+    ] ++ optionals isPy27 [ futures ];
     buildInputs = with self; [
-      testtools testrepository mock
+      testrepository mock coverage oslosphinx sphinx_1_2 keystoneauth1 #hacking
     ];
 
     patchPhase = ''
@@ -22314,6 +22316,30 @@ in {
     };
   };
 
+  rauth = buildPythonPackage rec {
+    name = "rauth-${version}";
+    version = "0.7.3";
+
+    disabled = !(isPy26 || isPy27 || pythonAtLeast "3.3");
+
+    src = pkgs.fetchurl {
+      url = "mirror://pypi/r/rauth/${name}.tar.gz";
+      sha256 = "02kv8w8l98ky223avyq7vw7x1f2ya9chrm59r77ylq45qb0xnk2j";
+    };
+
+    buildInputs = with self; optionals isPy26 [ unittest2 ];
+    propagatedBuildInputs = with self; [ requests2 ];
+
+    doCheck = false;
+
+    meta = {
+      description = "A Python library for OAuth 1.0/a, 2.0, and Ofly";
+      homepage = https://github.com/litl/rauth;
+      license = licenses.mit;
+      maintainers = with maintainers; [ montag451 ];
+    };
+  };
+
   recommonmark = buildPythonPackage rec {
     name = "recommonmark-${version}";
     version = "0.4.0";
@@ -25630,8 +25656,7 @@ in {
     name = "testtools-${version}";
     version = "1.8.0";
 
-    # Python 2 only judging from SyntaxError
-    disabled = isPy3k;
+    doCheck = false;
 
     src = pkgs.fetchurl {
       url = "mirror://pypi/t/testtools/${name}.tar.gz";

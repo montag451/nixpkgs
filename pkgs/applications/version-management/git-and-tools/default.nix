@@ -51,6 +51,8 @@ rec {
 
   git-annex-remote-rclone = callPackage ./git-annex-remote-rclone { };
 
+  git-annex-remote-hubic = callPackage ./git-annex-remote-hubic { };
+
   # support for bugzilla
   git-bz = callPackage ./git-bz { };
 
